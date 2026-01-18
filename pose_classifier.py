@@ -73,3 +73,43 @@ class PoseClassifier:
         """Save trained model to disk."""
         if self.model is not None:
             torch.save(self.model.state_dict(), self.model_path)
+
+    def extract_features(self, landmarks) -> np.ndarray | None:
+        """Extract normalized features from landmarks.
+
+        Returns None if landmarks have insufficient visibility.
+        """
+        # Check visibility of key landmarks
+        for idx in LANDMARK_INDICES:
+            if landmarks[idx].visibility < self.min_visibility:
+                return None
+
+        # Get shoulder positions for normalization
+        l_shoulder = landmarks[LEFT_SHOULDER]
+        r_shoulder = landmarks[RIGHT_SHOULDER]
+
+        # Body center (midpoint of shoulders)
+        center_x = (l_shoulder.x + r_shoulder.x) / 2
+        center_y = (l_shoulder.y + r_shoulder.y) / 2
+        center_z = (l_shoulder.z + r_shoulder.z) / 2
+
+        # Shoulder width for scale normalization
+        shoulder_width = np.sqrt(
+            (r_shoulder.x - l_shoulder.x) ** 2 +
+            (r_shoulder.y - l_shoulder.y) ** 2
+        )
+
+        if shoulder_width < 0.01:  # Too small, invalid
+            return None
+
+        # Extract and normalize features
+        features = []
+        for idx in LANDMARK_INDICES:
+            lm = landmarks[idx]
+            features.extend([
+                (lm.x - center_x) / shoulder_width,
+                (lm.y - center_y) / shoulder_width,
+                (lm.z - center_z) / shoulder_width,
+            ])
+
+        return np.array(features, dtype=np.float32)
