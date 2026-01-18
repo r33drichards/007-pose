@@ -280,13 +280,26 @@ def main():
                 color = colors.get(current_pose, (128, 128, 128))
                 draw_pose_text(frame, current_pose, color)
 
-            cv2.putText(frame, "[Q] Quit", (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            if not calibration.active:
+                cv2.putText(frame, "[C] Calibrate  [Q] Quit", (10, 30),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             cv2.imshow("007 Pose Detector", frame)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord('q'):
                 break
+            elif key == ord('c') and not calibration.active:
+                calibration.start()
+                classifier.clear_training_data()
+                print("Entering calibration mode...")
+            elif key == ord(' ') and calibration.active and not calibration.recording:
+                calibration.start_recording()
+                print(f"Recording {calibration.get_current_pose()}...")
+            elif key == 27 and calibration.active:  # ESC
+                calibration.cancel()
+                print("Calibration cancelled")
 
     cap.release()
     cv2.destroyAllWindows()
