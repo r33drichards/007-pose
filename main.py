@@ -212,9 +212,18 @@ def main():
         "NEUTRAL": (128, 128, 128) # Gray
     }
 
+    # Initialize pose classifier and calibration state
+    classifier = PoseClassifier(os.path.join(script_dir, "pose_model.pt"))
+    calibration = CalibrationState()
+
+    if classifier.is_ready():
+        print("Loaded trained pose model")
+    else:
+        print("No trained model - press C to calibrate")
+
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         print("007 Pose Detector")
-        print("Press Q to quit")
+        print("Press C to calibrate, Q to quit")
         print("-" * 30)
 
         frame_timestamp_ms = 0
