@@ -2,6 +2,7 @@
 """Pose collection with visual countdown GUI."""
 
 import cv2
+import json
 import mediapipe as mp
 import numpy as np
 import os
@@ -14,6 +15,35 @@ from pose_classifier import PoseClassifier, POSE_LABELS
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from rl_opponent import RLOpponent
+
+
+# Settings #######################################
+
+DEFAULT_SETTINGS = {
+    "show_bullets": False,
+}
+
+def get_settings_path():
+    """Get path to settings file in same directory as script."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, "settings.json")
+
+def load_settings():
+    """Load settings from JSON file, return defaults if not found."""
+    settings_path = get_settings_path()
+    try:
+        with open(settings_path, 'r') as f:
+            saved = json.load(f)
+            # Merge with defaults to handle new settings
+            return {**DEFAULT_SETTINGS, **saved}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return DEFAULT_SETTINGS.copy()
+
+def save_settings(settings):
+    """Save settings to JSON file."""
+    settings_path = get_settings_path()
+    with open(settings_path, 'w') as f:
+        json.dump(settings, f, indent=2)
 
 
 # Sound Effects ##################################
@@ -171,8 +201,9 @@ def draw_button(frame, text, y, selected=False):
 
 
 def show_menu(cap, classifier):
-    """Show main menu. Returns 'start', 'calibrate', or None for quit."""
-    selected = 0  # 0 = Start, 1 = Calibrate
+    """Show main menu. Returns 'start', 'calibrate', 'settings', or None for quit."""
+    selected = 0  # 0 = Start, 1 = Calibrate, 2 = Settings
+    num_options = 3
 
     while True:
         ret, frame = cap.read()
@@ -195,12 +226,13 @@ def show_menu(cap, classifier):
             status_color = (0, 0, 255)
 
         h, w = frame.shape[:2]
-        cv2.putText(frame, status, (w//2 - 120, h//2 - 100),
+        cv2.putText(frame, status, (w//2 - 120, h//2 - 140),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
 
         # Buttons
-        draw_button(frame, "START", h//2 - 40, selected == 0)
-        draw_button(frame, "CALIBRATE", h//2 + 60, selected == 1)
+        draw_button(frame, "START", h//2 - 80, selected == 0)
+        draw_button(frame, "CALIBRATE", h//2 + 20, selected == 1)
+        draw_button(frame, "SETTINGS", h//2 + 120, selected == 2)
 
         # Instructions
         cv2.putText(frame, "UP/DOWN to select, ENTER to confirm, Q to quit",
@@ -212,12 +244,17 @@ def show_menu(cap, classifier):
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             return None
-        elif key in [ord('w'), 82]:  # W or Up arrow
-            selected = (selected - 1) % 2
-        elif key in [ord('s'), 84]:  # S or Down arrow
-            selected = (selected + 1) % 2
+        elif key in [ord('w'), ord('W'), 0]:  # W or Up arrow
+            selected = (selected - 1) % num_options
+        elif key in [ord('s'), ord('S'), 1]:  # S or Down arrow
+            selected = (selected + 1) % num_options
         elif key in [13, 10]:  # Enter
-            return 'start' if selected == 0 else 'calibrate'
+            if selected == 0:
+                return 'start'
+            elif selected == 1:
+                return 'calibrate'
+            else:
+                return 'settings'
 
 
 def run_calibration(cap, landmarker, classifier):
@@ -309,20 +346,71 @@ def run_calibration(cap, landmarker, classifier):
         return False
 
 
-def draw_game_state(frame, state, round_num):
+def show_settings(cap, settings):
+    """Show settings menu. Modifies settings dict in place."""
+    selected = 0  # 0 = Show Bullets toggle, 1 = Back
+    num_options = 2
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        frame = cv2.flip(frame, 1)
+
+        # Darken background
+        frame = (frame * 0.3).astype('uint8')
+
+        # Title
+        draw_centered_text(frame, "SETTINGS", y_offset=-150, font_scale=2, color=(0, 255, 255))
+
+        h, w = frame.shape[:2]
+
+        # Show Bullets toggle
+        show_bullets_text = "Show Bullets: " + ("ON" if settings["show_bullets"] else "OFF")
+        draw_button(frame, show_bullets_text, h//2 - 40, selected == 0)
+
+        # Back button
+        draw_button(frame, "BACK", h//2 + 60, selected == 1)
+
+        # Instructions
+        cv2.putText(frame, "UP/DOWN to select, ENTER to toggle/confirm",
+                   (w//2 - 250, h - 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 1)
+
+        cv2.imshow("007 Pose Game", frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q') or key == 27:  # Q or ESC
+            return
+        elif key in [ord('w'), ord('W'), 0]:  # W or Up arrow
+            selected = (selected - 1) % num_options
+        elif key in [ord('s'), ord('S'), 1]:  # S or Down arrow
+            selected = (selected + 1) % num_options
+        elif key in [13, 10]:  # Enter
+            if selected == 0:
+                # Toggle show_bullets
+                settings["show_bullets"] = not settings["show_bullets"]
+                save_settings(settings)
+            else:
+                # Back
+                return
+
+
+def draw_game_state(frame, state, round_num, show_bullets=True):
     """Draw bullet counts and round number."""
-    h, w = frame.shape[:2]
+    _, w = frame.shape[:2]
     font = cv2.FONT_HERSHEY_SIMPLEX
 
-    # Your bullets (left side)
-    cv2.putText(frame, "YOU", (30, 50), font, 0.8, (0, 255, 255), 2)
-    bullets_str = "|" * state.p1_bullets + "." * (MAX_BULLETS - state.p1_bullets)
-    cv2.putText(frame, f"[{bullets_str}]", (30, 85), font, 0.6, (0, 255, 0), 2)
+    if show_bullets:
+        # Your bullets (left side)
+        cv2.putText(frame, "YOU", (30, 50), font, 0.8, (0, 255, 255), 2)
+        bullets_str = "|" * state.p1_bullets + "." * (MAX_BULLETS - state.p1_bullets)
+        cv2.putText(frame, f"[{bullets_str}]", (30, 85), font, 0.6, (0, 255, 0), 2)
 
-    # AI bullets (right side)
-    cv2.putText(frame, "AI", (w - 120, 50), font, 0.8, (0, 0, 255), 2)
-    bullets_str = "|" * state.p2_bullets + "." * (MAX_BULLETS - state.p2_bullets)
-    cv2.putText(frame, f"[{bullets_str}]", (w - 200, 85), font, 0.6, (0, 255, 0), 2)
+        # AI bullets (right side)
+        cv2.putText(frame, "AI", (w - 120, 50), font, 0.8, (0, 0, 255), 2)
+        bullets_str = "|" * state.p2_bullets + "." * (MAX_BULLETS - state.p2_bullets)
+        cv2.putText(frame, f"[{bullets_str}]", (w - 200, 85), font, 0.6, (0, 255, 0), 2)
 
     # Round number
     cv2.putText(frame, f"Round {round_num}", (w // 2 - 60, 40), font, 0.8, (255, 255, 255), 2)
@@ -346,10 +434,11 @@ def pose_to_action(pose, bullets):
 ACTION_NAMES = {'L': "RELOAD", 'B': "SHIELD", 'S': "SHOOT"}
 
 
-def run_game(cap, landmarker, classifier, ai):
+def run_game(cap, landmarker, classifier, ai, settings):
     """Run the pose collection game against AI. Returns when game ends."""
     countdown_seconds = 2
     pause_after_capture = 2
+    show_bullets = settings.get("show_bullets", False)
 
     pose_colors = {
         "SHOOT": (0, 0, 255),      # Red
@@ -383,7 +472,7 @@ def run_game(cap, landmarker, classifier, ai):
                 continue
             frame = cv2.flip(frame, 1)
 
-            draw_game_state(frame, state, round_num)
+            draw_game_state(frame, state, round_num, show_bullets)
 
             # Draw countdown number and play sounds on transitions
             num = int(remaining) + 1
@@ -435,7 +524,7 @@ def run_game(cap, landmarker, classifier, ai):
                     return None
 
             # Show waiting state
-            draw_game_state(frame, state, round_num)
+            draw_game_state(frame, state, round_num, show_bullets)
             draw_centered_text(frame, "POSE!", font_scale=4, color=(0, 255, 0))
             if pose != "NEUTRAL" and player_action is None:
                 draw_centered_text(frame, "No bullets!", y_offset=100, font_scale=1, color=(0, 0, 255))
@@ -466,7 +555,7 @@ def run_game(cap, landmarker, classifier, ai):
                 continue
             frame = cv2.flip(frame, 1)
 
-            draw_game_state(frame, state, round_num)
+            draw_game_state(frame, state, round_num, show_bullets)
 
             # Show both moves
             draw_centered_text(frame, f"You: {ACTION_NAMES[player_action]}", y_offset=-80, font_scale=1.5, color=color)
@@ -547,6 +636,9 @@ def main():
     # Initialize RL opponent
     ai = RLOpponent(os.path.join(script_dir, "opponent_model.pt"))
 
+    # Load settings
+    settings = load_settings()
+
     print("007 Pose Game")
     print("AI uses pattern recognition to learn your moves!")
 
@@ -571,7 +663,7 @@ def main():
                             cv2.imshow("007 Pose Game", frame)
                             cv2.waitKey(33)
                 else:
-                    result = run_game(cap, landmarker, classifier, ai)
+                    result = run_game(cap, landmarker, classifier, ai, settings)
                     if result == 1:
                         wins += 1
                     elif result == -1:
@@ -581,6 +673,8 @@ def main():
                     print(f"Score: You {wins} - {losses} AI (Draws: {draws})")
             elif choice == 'calibrate':
                 run_calibration(cap, landmarker, classifier)
+            elif choice == 'settings':
+                show_settings(cap, settings)
 
     ai.save()
     cap.release()
