@@ -38,3 +38,28 @@ def test_to_features_history_encoding():
     assert features[17] == 1  # L
     assert features[18] == 0  # B
     assert features[19] == 0  # S
+
+
+# OpponentPredictor tests
+import torch
+from rl_opponent import OpponentPredictor
+
+def test_opponent_predictor_output_shape():
+    model = OpponentPredictor()
+    x = torch.randn(1, 32)
+    logits = model(x)
+    assert logits.shape == (1, 3)
+
+def test_opponent_predictor_batch():
+    model = OpponentPredictor()
+    x = torch.randn(16, 32)
+    logits = model(x)
+    assert logits.shape == (16, 3)
+
+def test_opponent_predictor_predict_probs():
+    model = OpponentPredictor()
+    x = torch.randn(1, 32)
+    probs = model.predict_probs(x)
+    assert probs.shape == (1, 3)
+    assert np.isclose(probs.sum(), 1.0, atol=1e-5)
+    assert (probs >= 0).all()

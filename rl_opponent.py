@@ -3,9 +3,15 @@
 import numpy as np
 from dataclasses import dataclass, field
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 MAX_BULLETS = 10
 ACTIONS = ['L', 'B', 'S']
 HISTORY_LEN = 5
+INPUT_SIZE = 32
+HIDDEN_SIZE = 64
 
 
 @dataclass
@@ -49,3 +55,30 @@ def to_features(ctx: GameContext) -> np.ndarray:
             features.extend([0.0, 0.0, 0.0])
 
     return np.array(features, dtype=np.float32)
+
+
+class OpponentPredictor(nn.Module):
+    """Predicts probability distribution over opponent's next action."""
+
+    def __init__(self, input_size: int = INPUT_SIZE, hidden_size: int = HIDDEN_SIZE):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size, 3),  # L, B, S logits
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Returns logits for [L, B, S]."""
+        return self.net(x)
+
+    def predict_probs(self, x: torch.Tensor) -> np.ndarray:
+        """Returns probability distribution [P(L), P(B), P(S)]."""
+        self.eval()
+        with torch.no_grad():
+            logits = self.forward(x)
+            return F.softmax(logits, dim=-1).cpu().numpy()
