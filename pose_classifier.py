@@ -164,3 +164,27 @@ class PoseClassifier:
         self.model.eval()
         self.save_model()
         return True
+
+    def predict(self, landmarks) -> str:
+        """Predict pose from landmarks. Returns pose label or 'NEUTRAL'."""
+        if self.model is None:
+            return "NEUTRAL"
+
+        features = self.extract_features(landmarks)
+        if features is None:
+            return "NEUTRAL"
+
+        with torch.no_grad():
+            X = torch.tensor(features, dtype=torch.float32).unsqueeze(0).to(self.device)
+            outputs = self.model(X)
+            probs = torch.softmax(outputs, dim=1)
+            confidence, predicted = torch.max(probs, 1)
+
+            if confidence.item() < self.confidence_threshold:
+                return "NEUTRAL"
+
+            return POSE_LABELS[predicted.item()]
+
+    def is_ready(self) -> bool:
+        """Check if classifier has a trained model."""
+        return self.model is not None
