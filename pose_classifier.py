@@ -24,7 +24,7 @@ LANDMARK_INDICES = [
 ]
 
 POSE_LABELS = ["SHOOT", "SHIELD", "RELOAD"]
-NUM_FEATURES = len(LANDMARK_INDICES) * 3  # 8 landmarks * 3 coords (x, y, z) = 24
+NUM_FEATURES = len(LANDMARK_INDICES) * 4  # 8 landmarks * (3 coords + 1 presence flag) = 32
 
 
 class PoseMLP(nn.Module):
@@ -77,16 +77,17 @@ class PoseClassifier:
     def extract_features(self, landmarks) -> np.ndarray | None:
         """Extract normalized features from landmarks.
 
-        Returns None if landmarks have insufficient visibility.
+        Returns features with presence flags for each landmark.
+        Missing landmarks (low visibility) get zeros for coords and 0.0 presence flag.
+        Returns None only if shoulders aren't visible (can't normalize).
         """
-        # Check visibility of key landmarks
-        for idx in LANDMARK_INDICES:
-            if landmarks[idx].visibility < self.min_visibility:
-                return None
-
         # Get shoulder positions for normalization
         l_shoulder = landmarks[LEFT_SHOULDER]
         r_shoulder = landmarks[RIGHT_SHOULDER]
+
+        # Need at least shoulders visible to normalize
+        if l_shoulder.visibility < self.min_visibility or r_shoulder.visibility < self.min_visibility:
+            return None
 
         # Body center (midpoint of shoulders)
         center_x = (l_shoulder.x + r_shoulder.x) / 2
@@ -102,15 +103,21 @@ class PoseClassifier:
         if shoulder_width < 0.01:  # Too small, invalid
             return None
 
-        # Extract and normalize features
+        # Extract and normalize features with presence flags
         features = []
         for idx in LANDMARK_INDICES:
             lm = landmarks[idx]
-            features.extend([
-                (lm.x - center_x) / shoulder_width,
-                (lm.y - center_y) / shoulder_width,
-                (lm.z - center_z) / shoulder_width,
-            ])
+            if lm.visibility >= self.min_visibility:
+                # Landmark is present
+                features.extend([
+                    (lm.x - center_x) / shoulder_width,
+                    (lm.y - center_y) / shoulder_width,
+                    (lm.z - center_z) / shoulder_width,
+                    1.0,  # presence flag
+                ])
+            else:
+                # Landmark is missing - use zeros
+                features.extend([0.0, 0.0, 0.0, 0.0])
 
         return np.array(features, dtype=np.float32)
 

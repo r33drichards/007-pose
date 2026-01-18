@@ -32,6 +32,7 @@ class CalibrationState:
         """Exit calibration mode."""
         self.active = False
         self.recording = False
+        self.current_pose_idx = 0
 
     def start_recording(self):
         """Start recording samples for current pose."""
