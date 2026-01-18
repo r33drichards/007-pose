@@ -11,6 +11,52 @@ from pose_classifier import PoseClassifier, POSE_LABELS
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+
+class CalibrationState:
+    """Manages calibration mode state."""
+
+    def __init__(self):
+        self.active = False
+        self.current_pose_idx = 0
+        self.recording = False
+        self.record_start_time = 0
+        self.record_duration = 3.0  # seconds
+
+    def start(self):
+        """Enter calibration mode."""
+        self.active = True
+        self.current_pose_idx = 0
+        self.recording = False
+
+    def cancel(self):
+        """Exit calibration mode."""
+        self.active = False
+        self.recording = False
+
+    def start_recording(self):
+        """Start recording samples for current pose."""
+        self.recording = True
+        self.record_start_time = time.time()
+
+    def get_current_pose(self) -> str:
+        """Get the pose currently being calibrated."""
+        return POSE_LABELS[self.current_pose_idx]
+
+    def next_pose(self) -> bool:
+        """Move to next pose. Returns False if all poses done."""
+        self.current_pose_idx += 1
+        self.recording = False
+        return self.current_pose_idx < len(POSE_LABELS)
+
+    def get_recording_elapsed(self) -> float:
+        """Get seconds elapsed since recording started."""
+        return time.time() - self.record_start_time
+
+    def is_recording_done(self) -> bool:
+        """Check if recording duration has elapsed."""
+        return self.get_recording_elapsed() >= self.record_duration
+
+
 # Landmark indices (same as legacy API)
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
