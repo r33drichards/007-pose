@@ -57,28 +57,12 @@ class CalibrationState:
         return self.get_recording_elapsed() >= self.record_duration
 
 
-# Landmark indices (same as legacy API)
-LEFT_SHOULDER = 11
-RIGHT_SHOULDER = 12
-LEFT_ELBOW = 13
-RIGHT_ELBOW = 14
-LEFT_WRIST = 15
-RIGHT_WRIST = 16
-LEFT_HIP = 23
-RIGHT_HIP = 24
-
 # Pose connections for drawing
 POSE_CONNECTIONS = [
     (11, 12), (11, 13), (13, 15), (12, 14), (14, 16),  # Arms
     (11, 23), (12, 24), (23, 24),  # Torso
     (23, 25), (25, 27), (24, 26), (26, 28),  # Legs
 ]
-
-
-def get_landmark(landmarks, idx):
-    """Extract x, y, z, visibility from landmark."""
-    lm = landmarks[idx]
-    return lm.x, lm.y, lm.z, lm.visibility
 
 
 def draw_landmarks(image, landmarks):
