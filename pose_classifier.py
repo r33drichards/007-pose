@@ -64,7 +64,7 @@ class PoseClassifier:
         """Load model from disk if exists. Returns True if loaded."""
         if self.model_path.exists():
             self.model = PoseMLP().to(self.device)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+            self.model.load_state_dict(torch.load(self.model_path, map_location=self.device, weights_only=True))
             self.model.eval()
             return True
         return False
