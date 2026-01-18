@@ -5,15 +5,13 @@ import cv2
 import mediapipe as mp
 import os
 import time
-from collections import Counter
-from random import choices, choice
-from itertools import chain
 from dataclasses import dataclass
 from typing import Optional
 
 from pose_classifier import PoseClassifier, POSE_LABELS
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from rl_opponent import RLOpponent
 
 
 # Game Definition ################################
@@ -77,122 +75,6 @@ def step(state: GameState, p1_action: str, p2_action: str) -> GameState:
         winner = 1  # P1 wins
 
     return GameState(p1_bullets=p1_bullets, p2_bullets=p2_bullets, winner=winner)
-
-
-# Learning AI ####################################
-
-# L=Load, B=Block, S=Shoot
-# If opponent Loads, Shoot wins. If opponent Shoots, Block saves. If opponent Blocks, Load is free.
-ideal_response = {'L': 'S', 'B': 'L', 'S': 'B'}
-options = ['L', 'B', 'S']
-
-
-def select_proportional(events, baseline=()):
-    if not events and not baseline:
-        return choice(options)
-    rel_freq = Counter(chain(baseline, events))
-    population, weights = zip(*rel_freq.items())
-    return choices(population, weights)[0]
-
-
-def select_maximum(events, baseline=()):
-    if not events and not baseline:
-        return choice(options)
-    rel_freq = Counter(chain(baseline, events))
-    return rel_freq.most_common(1)[0][0]
-
-
-# Strategies
-def random_reply(p1hist, p2hist):
-    return choice(options)
-
-
-def single_event_proportional(p1hist, p2hist):
-    prediction = select_proportional(p2hist, options)
-    return ideal_response[prediction]
-
-
-def single_event_greedy(p1hist, p2hist):
-    prediction = select_maximum(p2hist, options)
-    return ideal_response[prediction]
-
-
-def digraph_event_proportional(p1hist, p2hist):
-    if not p2hist:
-        return choice(options)
-    recent_play = p2hist[-1]
-    digraphs = list(zip(p2hist, p2hist[1:]))
-    followers = [b for a, b in digraphs if a == recent_play]
-    if not followers:
-        return single_event_proportional(p1hist, p2hist)
-    prediction = select_proportional(followers, options)
-    return ideal_response[prediction]
-
-
-def digraph_event_greedy(p1hist, p2hist):
-    if not p2hist:
-        return choice(options)
-    recent_play = p2hist[-1]
-    digraphs = list(zip(p2hist, p2hist[1:]))
-    followers = [b for a, b in digraphs if a == recent_play]
-    if not followers:
-        return single_event_greedy(p1hist, p2hist)
-    prediction = select_maximum(followers, options)
-    return ideal_response[prediction]
-
-
-class LearningAI:
-    """Multi-arm bandit AI that learns opponent patterns."""
-
-    strategies = [
-        random_reply,
-        single_event_proportional,
-        single_event_greedy,
-        digraph_event_proportional,
-        digraph_event_greedy,
-    ]
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        """Reset for a new game."""
-        self.weights = [1] * len(self.strategies)
-        self.p1hist = []  # AI history
-        self.p2hist = []  # Opponent (player) history
-
-    def get_action(self, ai_bullets: int) -> str:
-        """Get AI's action given its bullet count."""
-        strategy_range = range(len(self.strategies))
-
-        # Get moves from all strategies
-        our_moves = [s(self.p1hist, self.p2hist) for s in self.strategies]
-
-        # Choose strategy based on weights
-        i = choices(strategy_range, self.weights)[0]
-        move = our_moves[i]
-
-        # Can't shoot without bullets - fall back to Load or Block
-        if move == 'S' and ai_bullets <= 0:
-            move = choice(['L', 'B'])
-
-        return move
-
-    def update(self, ai_action: str, player_action: str):
-        """Update history and strategy weights after a round."""
-        self.p1hist.append(ai_action)
-        self.p2hist.append(player_action)
-
-        # Reward strategies that would have won
-        our_moves = [s(self.p1hist[:-1], self.p2hist[:-1]) for s in self.strategies]
-        for i, move in enumerate(our_moves):
-            # Check if this strategy's move would have beaten the player
-            if move == 'S' and player_action == 'L':
-                self.weights[i] += 1
-            elif move == 'B' and player_action == 'S':
-                self.weights[i] += 1
-            elif move == 'L' and player_action == 'B':
-                self.weights[i] += 1
 
 
 def draw_centered_text(frame, text, y_offset=0, font_scale=3, color=(255, 255, 255), thickness=4):
@@ -433,7 +315,7 @@ def run_game(cap, landmarker, classifier, ai):
     }
 
     # Reset AI for new game
-    ai.reset()
+    ai.reset_game()
 
     state = GameState()
     round_num = 0
@@ -508,7 +390,7 @@ def run_game(cap, landmarker, classifier, ai):
                 return None
 
         # Get AI action
-        ai_action = ai.get_action(state.p2_bullets)
+        ai_action = ai.get_action(state.p2_bullets, state.p1_bullets)
 
         # Execute turn
         new_state = step(state, player_action, ai_action)
@@ -604,8 +486,8 @@ def main():
     # Initialize pose classifier
     classifier = PoseClassifier(os.path.join(script_dir, "pose_model.pt"))
 
-    # Initialize learning AI
-    ai = LearningAI()
+    # Initialize RL opponent
+    ai = RLOpponent(os.path.join(script_dir, "opponent_model.pt"))
 
     print("007 Pose Game")
     print("AI uses pattern recognition to learn your moves!")
@@ -642,6 +524,7 @@ def main():
             elif choice == 'calibrate':
                 run_calibration(cap, landmarker, classifier)
 
+    ai.save()
     cap.release()
     cv2.destroyAllWindows()
 
