@@ -1,8 +1,10 @@
 """RL Opponent Agent for 007 Pose Game."""
 
-import numpy as np
+import random
 from dataclasses import dataclass, field
+from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -82,3 +84,77 @@ class OpponentPredictor(nn.Module):
         with torch.no_grad():
             logits = self.forward(x)
             return F.softmax(logits, dim=-1).cpu().numpy()
+
+
+class OpponentModel:
+    """Manages opponent predictor with online learning and persistence."""
+
+    def __init__(self, model_path: str = "opponent_model.pt"):
+        self.model_path = Path(model_path)
+        self.model = OpponentPredictor()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
+
+        # Experience buffer for mini-batch updates
+        self.buffer: list[tuple[np.ndarray, int]] = []
+        self.buffer_size = 500
+
+        self.load()
+
+    def predict(self, features: np.ndarray) -> np.ndarray:
+        """Predict action probabilities for given features."""
+        x = torch.tensor(features, dtype=torch.float32).unsqueeze(0)
+        probs = self.model.predict_probs(x)
+        return probs[0]
+
+    def update(self, features: np.ndarray, actual_action: str):
+        """Update model after observing opponent's action."""
+        action_idx = ACTIONS.index(actual_action)
+        self.buffer.append((features.copy(), action_idx))
+
+        # Keep buffer bounded
+        if len(self.buffer) > self.buffer_size:
+            self.buffer.pop(0)
+
+        # Train on mini-batch from buffer
+        self._train_step()
+
+    def _train_step(self, batch_size: int = 16, epochs: int = 2):
+        """Single training step on recent experience."""
+        if len(self.buffer) < 4:
+            return
+
+        if len(self.buffer) < batch_size:
+            batch = self.buffer
+        else:
+            batch = random.sample(self.buffer, batch_size)
+
+        X = torch.tensor(np.array([b[0] for b in batch]), dtype=torch.float32)
+        y = torch.tensor([b[1] for b in batch], dtype=torch.long)
+
+        self.model.train()
+        for _ in range(epochs):
+            self.optimizer.zero_grad()
+            logits = self.model(X)
+            loss = F.cross_entropy(logits, y)
+            loss.backward()
+            self.optimizer.step()
+        self.model.eval()
+
+    def save(self):
+        """Save model and buffer to disk."""
+        torch.save({
+            'model': self.model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'buffer': self.buffer,
+        }, self.model_path)
+
+    def load(self):
+        """Load model and buffer from disk if exists."""
+        if self.model_path.exists():
+            try:
+                data = torch.load(self.model_path, weights_only=False)
+                self.model.load_state_dict(data['model'])
+                self.optimizer.load_state_dict(data['optimizer'])
+                self.buffer = data.get('buffer', [])
+            except Exception as e:
+                print(f"Could not load opponent model: {e}")

@@ -42,6 +42,8 @@ def test_to_features_history_encoding():
 
 # OpponentPredictor tests
 import torch
+import tempfile
+import os
 from rl_opponent import OpponentPredictor
 
 def test_opponent_predictor_output_shape():
@@ -63,3 +65,50 @@ def test_opponent_predictor_predict_probs():
     assert probs.shape == (1, 3)
     assert np.isclose(probs.sum(), 1.0, atol=1e-5)
     assert (probs >= 0).all()
+
+
+# OpponentModel tests
+from rl_opponent import OpponentModel
+
+def test_opponent_model_predict():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+        model = OpponentModel(path)
+        ctx = GameContext(my_bullets=0, opp_bullets=0, opp_history=[], my_history=[])
+        features = to_features(ctx)
+        probs = model.predict(features)
+        assert probs.shape == (3,)
+        assert np.isclose(probs.sum(), 1.0, atol=1e-5)
+
+def test_opponent_model_update():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+        model = OpponentModel(path)
+        ctx = GameContext(my_bullets=0, opp_bullets=0, opp_history=[], my_history=[])
+        features = to_features(ctx)
+        # Should not raise
+        model.update(features, 'L')
+        model.update(features, 'B')
+        model.update(features, 'S')
+        assert len(model.buffer) == 3
+
+def test_opponent_model_save_load():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+
+        # Create and train model
+        model1 = OpponentModel(path)
+        ctx = GameContext(my_bullets=5, opp_bullets=3, opp_history=['L'], my_history=['B'])
+        features = to_features(ctx)
+        for _ in range(10):
+            model1.update(features, 'S')
+        model1.save()
+
+        # Load in new instance
+        model2 = OpponentModel(path)
+        assert len(model2.buffer) == 10
+
+        # Predictions should be similar
+        probs1 = model1.predict(features)
+        probs2 = model2.predict(features)
+        assert np.allclose(probs1, probs2, atol=0.1)
