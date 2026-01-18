@@ -1,5 +1,7 @@
 // 007 Pose Web App - Main Entry Point
 
+import { PoseDetector } from './pose-detector.js';
+
 console.log('007 Pose loading...');
 
 // App state
@@ -8,6 +10,7 @@ const state = {
   poseReady: false,
   classifierReady: false,
   gameState: null,
+  poseDetector: null,
 };
 
 async function initWebcam() {
@@ -34,17 +37,53 @@ async function initWebcam() {
   }
 }
 
+async function initPose() {
+  state.poseDetector = new PoseDetector();
+  await state.poseDetector.init();
+  console.log('Pose detector ready');
+  return true;
+}
+
 async function init() {
   console.log('Initializing app...');
 
   state.webcamReady = await initWebcam();
   if (!state.webcamReady) return;
 
-  document.getElementById('message').textContent = 'Camera ready!';
+  document.getElementById('message').textContent = 'Loading pose model...';
+  state.poseReady = await initPose();
 
-  // TODO: Initialize MediaPipe Pose
-  // TODO: Initialize classifier
-  // TODO: Start game loop
+  document.getElementById('message').textContent = 'Ready!';
+
+  // Start detection loop
+  detectLoop();
+}
+
+async function detectLoop() {
+  const video = document.getElementById('webcam');
+  const landmarks = await state.poseDetector.detect(video);
+
+  if (landmarks) {
+    drawLandmarks(landmarks);
+  }
+
+  requestAnimationFrame(detectLoop);
+}
+
+function drawLandmarks(landmarks) {
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw pose dots
+  ctx.fillStyle = '#00ff00';
+  for (const lm of landmarks) {
+    if (lm.visibility > 0.5) {
+      ctx.beginPath();
+      ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 init().catch(console.error);
