@@ -5,6 +5,7 @@ import { PoseClassifier, POSE_LABELS } from './classifier.js';
 import { Calibration } from './calibration.js';
 import { RLOpponent } from './opponent.js';
 import { GameState, step, poseToAction, getValidActions, ACTION_NAMES, MAX_BULLETS } from './game.js';
+import { playCountdownTone, playPoseTone, playWinSound, playLoseSound, playDrawSound, playCompareSound } from './audio.js';
 
 const state = {
   webcamReady: false,
@@ -169,9 +170,20 @@ async function gameLoop() {
 
 async function countdown(duration) {
   const startTime = Date.now();
+  let lastRemaining = null;
 
   while (Date.now() - startTime < duration) {
     const remaining = Math.ceil((duration - (Date.now() - startTime)) / 1000);
+
+    // Play sound on number change
+    if (remaining !== lastRemaining) {
+      if (remaining <= 0) {
+        playPoseTone();
+      } else {
+        playCountdownTone();
+      }
+      lastRemaining = remaining;
+    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -219,6 +231,8 @@ async function capturePlayerAction() {
 }
 
 async function showRoundResult(playerAction, aiAction) {
+  playCompareSound();
+
   const duration = 2000;
   const startTime = Date.now();
 
@@ -253,6 +267,15 @@ function endGame(winner) {
     resultText = 'AI WINS!';
     resultColor = '#ff0000';
     state.losses++;
+  }
+
+  // Play end game sound
+  if (winner === 0) {
+    playDrawSound();
+  } else if (winner === 1) {
+    playWinSound();
+  } else if (winner === 2) {
+    playLoseSound();
   }
 
   // Save opponent learning
