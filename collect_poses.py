@@ -492,7 +492,7 @@ def run_game(cap, landmarker, classifier, ai):
             if results.pose_landmarks and len(results.pose_landmarks) > 0:
                 landmarks = results.pose_landmarks[0]
                 if classifier.is_ready():
-                    pose = classifier.predict(landmarks)
+                    pose = classifier.predict(landmarks, debug=True)
                     player_action = pose_to_action(pose, state.p1_bullets)
                 else:
                     pose = "NO MODEL"

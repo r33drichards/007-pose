@@ -6,38 +6,37 @@ import torch.nn as nn
 import numpy as np
 from pathlib import Path
 
-# Landmark indices
+# Landmark indices - using all 33 MediaPipe pose landmarks
+# 0-10: Face (nose, eyes, ears, mouth)
+# 11-16: Upper body (shoulders, elbows, wrists)
+# 17-22: Hands (pinky, index, thumb for each hand)
+# 23-28: Lower body (hips, knees, ankles)
+# 29-32: Feet (heels, foot index)
+
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
-LEFT_ELBOW = 13
-RIGHT_ELBOW = 14
-LEFT_WRIST = 15
-RIGHT_WRIST = 16
-LEFT_HIP = 23
-RIGHT_HIP = 24
 
-LANDMARK_INDICES = [
-    LEFT_SHOULDER, RIGHT_SHOULDER,
-    LEFT_ELBOW, RIGHT_ELBOW,
-    LEFT_WRIST, RIGHT_WRIST,
-    LEFT_HIP, RIGHT_HIP,
-]
+# Use all 33 landmarks for maximum pose information
+NUM_LANDMARKS = 33
+LANDMARK_INDICES = list(range(NUM_LANDMARKS))
 
 POSE_LABELS = ["SHOOT", "SHIELD", "RELOAD"]
-NUM_FEATURES = len(LANDMARK_INDICES) * 4  # 8 landmarks * (3 coords + 1 presence flag) = 32
+NUM_FEATURES = NUM_LANDMARKS * 4  # 33 landmarks * (3 coords + 1 presence flag) = 132
 
 
 class PoseMLP(nn.Module):
-    """Simple MLP for pose classification."""
+    """MLP for pose classification with all landmarks."""
 
     def __init__(self):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.Linear(NUM_FEATURES, 64),
+            nn.Linear(NUM_FEATURES, 128),
             nn.ReLU(),
-            nn.Linear(64, 32),
+            nn.Dropout(0.2),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(32, len(POSE_LABELS)),
+            nn.Dropout(0.2),
+            nn.Linear(64, len(POSE_LABELS)),
         )
 
     def forward(self, x):
@@ -63,10 +62,16 @@ class PoseClassifier:
     def load_model(self) -> bool:
         """Load model from disk if exists. Returns True if loaded."""
         if self.model_path.exists():
-            self.model = PoseMLP().to(self.device)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=self.device, weights_only=True))
-            self.model.eval()
-            return True
+            try:
+                self.model = PoseMLP().to(self.device)
+                self.model.load_state_dict(torch.load(self.model_path, map_location=self.device, weights_only=True))
+                self.model.eval()
+                return True
+            except RuntimeError as e:
+                # Model architecture changed, need to recalibrate
+                print(f"Model incompatible (architecture changed), please recalibrate: {e}")
+                self.model = None
+                return False
         return False
 
     def save_model(self):
@@ -172,7 +177,7 @@ class PoseClassifier:
         self.save_model()
         return True
 
-    def predict(self, landmarks) -> str:
+    def predict(self, landmarks, debug: bool = False) -> str:
         """Predict pose from landmarks. Returns pose label or 'NEUTRAL'."""
         if self.model is None:
             return "NEUTRAL"
@@ -186,6 +191,10 @@ class PoseClassifier:
             outputs = self.model(X)
             probs = torch.softmax(outputs, dim=1)
             confidence, predicted = torch.max(probs, 1)
+
+            if debug:
+                prob_list = probs[0].cpu().numpy()
+                print(f"  SHOOT: {prob_list[0]:.1%}  SHIELD: {prob_list[1]:.1%}  RELOAD: {prob_list[2]:.1%} -> {POSE_LABELS[predicted.item()]} ({confidence.item():.1%})")
 
             if confidence.item() < self.confidence_threshold:
                 return "NEUTRAL"
