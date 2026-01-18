@@ -1,0 +1,104 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+}
+
+#app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+h1 {
+  color: #00ffff;
+  font-size: 1.5rem;
+}
+
+button {
+  background: #333;
+  color: #eee;
+  border: 1px solid #555;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+button:hover {
+  background: #444;
+}
+
+#video-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#webcam, #overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#webcam {
+  transform: scaleX(-1);
+  object-fit: cover;
+}
+
+#overlay {
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+#game-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding: 0.5rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+#player-info .label { color: #00ffff; }
+#ai-info .label { color: #ff6b6b; }
+
+.bullets {
+  font-family: monospace;
+  margin-top: 0.25rem;
+}
+
+#message {
+  text-align: center;
+  font-size: 2rem;
+  padding: 1rem;
+  min-height: 4rem;
+}
+
+#score {
+  text-align: center;
+  color: #888;
+  margin-top: 0.5rem;
+}

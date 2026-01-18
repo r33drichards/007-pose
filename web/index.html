@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>007 Pose</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>007 POSE</h1>
+      <button id="calibrate-btn">Calibrate</button>
+    </header>
+    <main>
+      <div id="video-container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="overlay"></canvas>
+      </div>
+      <div id="game-info">
+        <div id="player-info">
+          <span class="label">YOU</span>
+          <div id="player-bullets" class="bullets"></div>
+        </div>
+        <div id="round-info">Round <span id="round-num">0</span></div>
+        <div id="ai-info">
+          <span class="label">AI</span>
+          <div id="ai-bullets" class="bullets"></div>
+        </div>
+      </div>
+      <div id="message"></div>
+      <div id="score">You: <span id="wins">0</span> - <span id="losses">0</span> AI</div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
