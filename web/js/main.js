@@ -2,6 +2,7 @@
 
 import { PoseDetector } from './pose-detector.js';
 import { PoseClassifier, POSE_LABELS } from './classifier.js';
+import { Calibration } from './calibration.js';
 
 console.log('007 Pose loading...');
 
@@ -46,6 +47,34 @@ async function initPose() {
   return true;
 }
 
+function setupCalibration() {
+  const btn = document.getElementById('calibrate-btn');
+  btn.addEventListener('click', async () => {
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('overlay');
+
+    const calibration = new Calibration(
+      state.classifier,
+      state.poseDetector,
+      video,
+      canvas
+    );
+
+    btn.disabled = true;
+    btn.textContent = 'Calibrating...';
+
+    const success = await calibration.run();
+
+    btn.disabled = false;
+    btn.textContent = 'Calibrate';
+
+    if (success) {
+      state.classifierReady = true;
+      document.getElementById('message').textContent = 'Ready to play!';
+    }
+  });
+}
+
 async function init() {
   console.log('Initializing app...');
 
@@ -64,6 +93,8 @@ async function init() {
   } else {
     document.getElementById('message').textContent = 'Calibration needed';
   }
+
+  setupCalibration();
 
   // Start detection loop
   detectLoop();
