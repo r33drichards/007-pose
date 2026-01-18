@@ -113,3 +113,25 @@ class PoseClassifier:
             ])
 
         return np.array(features, dtype=np.float32)
+
+    def clear_training_data(self):
+        """Clear all collected training samples."""
+        self.training_samples = []
+
+    def add_sample(self, landmarks, pose_label: str) -> bool:
+        """Add a training sample. Returns True if sample was valid and added."""
+        features = self.extract_features(landmarks)
+        if features is None:
+            return False
+
+        label_idx = POSE_LABELS.index(pose_label)
+        self.training_samples.append((features, label_idx))
+        return True
+
+    def get_sample_count(self, pose_label: str = None) -> int:
+        """Get count of samples, optionally filtered by pose."""
+        if pose_label is None:
+            return len(self.training_samples)
+
+        label_idx = POSE_LABELS.index(pose_label)
+        return sum(1 for _, idx in self.training_samples if idx == label_idx)
