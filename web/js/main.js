@@ -1,6 +1,7 @@
 // 007 Pose Web App - Main Entry Point
 
 import { PoseDetector } from './pose-detector.js';
+import { PoseClassifier, POSE_LABELS } from './classifier.js';
 
 console.log('007 Pose loading...');
 
@@ -11,6 +12,7 @@ const state = {
   classifierReady: false,
   gameState: null,
   poseDetector: null,
+  classifier: null,
 };
 
 async function initWebcam() {
@@ -53,7 +55,15 @@ async function init() {
   document.getElementById('message').textContent = 'Loading pose model...';
   state.poseReady = await initPose();
 
-  document.getElementById('message').textContent = 'Ready!';
+  // Initialize classifier
+  state.classifier = new PoseClassifier();
+  state.classifierReady = await state.classifier.loadFromStorage();
+
+  if (state.classifierReady) {
+    document.getElementById('message').textContent = 'Ready to play!';
+  } else {
+    document.getElementById('message').textContent = 'Calibration needed';
+  }
 
   // Start detection loop
   detectLoop();
@@ -65,6 +75,11 @@ async function detectLoop() {
 
   if (landmarks) {
     drawLandmarks(landmarks);
+
+    if (state.classifierReady) {
+      const pose = state.classifier.predict(landmarks);
+      document.getElementById('message').textContent = pose;
+    }
   }
 
   requestAnimationFrame(detectLoop);
