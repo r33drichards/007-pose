@@ -3,7 +3,9 @@
 
 import cv2
 import mediapipe as mp
+import numpy as np
 import os
+import sounddevice as sd
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -12,6 +14,49 @@ from pose_classifier import PoseClassifier, POSE_LABELS
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from rl_opponent import RLOpponent
+
+
+# Sound Effects ##################################
+
+SAMPLE_RATE = 44100
+
+def play_tone(frequency: float, duration: float = 0.15):
+    """Play a sine wave tone (non-blocking)."""
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+    # Sine wave with envelope to avoid clicks
+    envelope = np.exp(-t * 8)  # Decay envelope
+    tone = np.sin(2 * np.pi * frequency * t) * envelope * 0.5
+    sd.play(tone.astype(np.float32), SAMPLE_RATE)
+
+def play_countdown_tone():
+    """Play tone for countdown numbers (2, 1)."""
+    play_tone(440, 0.12)  # A4 note
+
+def play_pose_tone():
+    """Play tone for POSE! moment."""
+    play_tone(880, 0.2)  # A5 note (higher pitch)
+
+def play_win_sound():
+    """Play ascending victory jingle."""
+    for freq in [523, 659, 784, 1047]:  # C5, E5, G5, C6 (major arpeggio)
+        play_tone(freq, 0.15)
+        sd.wait()
+
+def play_lose_sound():
+    """Play descending defeat sound."""
+    for freq in [392, 349, 311, 262]:  # G4, F4, Eb4, C4 (descending)
+        play_tone(freq, 0.2)
+        sd.wait()
+
+def play_draw_sound():
+    """Play neutral draw sound."""
+    play_tone(440, 0.3)
+    sd.wait()
+    play_tone(440, 0.3)
+
+def play_compare_sound():
+    """Play sound when comparing moves."""
+    play_tone(660, 0.1)  # E5 - quick reveal sound
 
 
 # Game Definition ################################
@@ -325,6 +370,7 @@ def run_game(cap, landmarker, classifier, ai):
 
         # === COUNTDOWN PHASE ===
         countdown_start = time.time()
+        last_display = None  # Track what's being shown to trigger sounds
         while True:
             elapsed = time.time() - countdown_start
             remaining = countdown_seconds - elapsed
@@ -339,11 +385,19 @@ def run_game(cap, landmarker, classifier, ai):
 
             draw_game_state(frame, state, round_num)
 
-            # Draw countdown number
+            # Draw countdown number and play sounds on transitions
             num = int(remaining) + 1
             if remaining < 0.5:
+                current_display = "POSE"
+                if last_display != current_display:
+                    play_pose_tone()
+                    last_display = current_display
                 draw_centered_text(frame, "POSE!", font_scale=4, color=(0, 255, 0))
             else:
+                current_display = num
+                if last_display != current_display:
+                    play_countdown_tone()
+                    last_display = current_display
                 draw_centered_text(frame, str(num), font_scale=5, color=(0, 255, 255))
 
             # Show valid moves hint
@@ -402,6 +456,7 @@ def run_game(cap, landmarker, classifier, ai):
         print(f"[{timestamp}] Round {round_num}: You={ACTION_NAMES[player_action]} vs AI={ACTION_NAMES[ai_action]}")
 
         # === RESULT DISPLAY PHASE ===
+        play_compare_sound()
         color = pose_colors.get(pose, (255, 255, 255))
         result_start = time.time()
 
@@ -429,14 +484,17 @@ def run_game(cap, landmarker, classifier, ai):
         result_text = "DRAW!"
         result_color = (0, 255, 255)
         result = 0
+        play_draw_sound()
     elif state.winner == 1:
         result_text = "YOU WIN!"
         result_color = (0, 255, 0)
         result = 1
+        play_win_sound()
     else:
         result_text = "AI WINS!"
         result_color = (0, 0, 255)
         result = -1
+        play_lose_sound()
 
     # Show game over for 3 seconds
     result_start = time.time()
