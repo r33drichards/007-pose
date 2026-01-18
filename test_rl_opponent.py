@@ -163,3 +163,67 @@ def test_select_action_adjusts_for_opp_no_bullets():
     action = select_action(probs, ai_bullets=1, opp_bullets=0)
     # With adjusted probs, opponent will L or B, so AI should S or L
     assert action in ['S', 'L']
+
+
+# RLOpponent tests
+from rl_opponent import RLOpponent
+
+def test_rl_opponent_get_action():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+        ai = RLOpponent(path)
+
+        action = ai.get_action(my_bullets=0, opp_bullets=0)
+        assert action in ['L', 'B', 'S']
+
+def test_rl_opponent_update():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+        ai = RLOpponent(path)
+
+        ai.get_action(my_bullets=0, opp_bullets=0)
+        ai.update(my_action='L', opp_action='L')
+
+        assert len(ai.my_history) == 1
+        assert len(ai.opp_history) == 1
+        assert ai.rounds_played == 1
+
+def test_rl_opponent_reset_game():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+        ai = RLOpponent(path)
+
+        ai.get_action(my_bullets=0, opp_bullets=0)
+        ai.update(my_action='L', opp_action='L')
+        ai.reset_game()
+
+        assert len(ai.my_history) == 0
+        assert len(ai.opp_history) == 0
+        # rounds_played persists across games
+        assert ai.rounds_played == 1
+
+def test_rl_opponent_session_adaptation():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+        ai = RLOpponent(path)
+
+        # Play enough rounds to trigger session model
+        for _ in range(15):
+            ai.get_action(my_bullets=1, opp_bullets=1)
+            ai.update(my_action='L', opp_action='S')  # Opponent always shoots
+
+        assert len(ai.session_buffer) == 15
+        assert ai.session_model is not None
+
+def test_rl_opponent_save_load():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "test_model.pt")
+
+        ai1 = RLOpponent(path)
+        for _ in range(10):
+            ai1.get_action(my_bullets=1, opp_bullets=1)
+            ai1.update(my_action='B', opp_action='L')
+        ai1.save()
+
+        ai2 = RLOpponent(path)
+        assert len(ai2.persistent_model.buffer) == 10

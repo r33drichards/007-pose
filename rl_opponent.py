@@ -208,3 +208,115 @@ def select_action(
 
     # Pick best valid action
     return max(valid_actions, key=lambda a: expected_values[a])
+
+
+class RLOpponent:
+    """Complete RL opponent with persistent + session learning."""
+
+    def __init__(self, model_path: str = "opponent_model.pt"):
+        self.model_path = Path(model_path)
+
+        # Persistent opponent model (loads from disk)
+        self.persistent_model = OpponentModel(model_path)
+
+        # Session-specific adaptation
+        self.session_buffer: list[tuple[np.ndarray, int]] = []
+        self.session_model: OpponentPredictor | None = None
+
+        # Game state tracking
+        self.my_history: list[str] = []
+        self.opp_history: list[str] = []
+
+        # Stats
+        self.rounds_played = 0
+
+    def reset_game(self):
+        """Reset for new game (keep session learning)."""
+        self.my_history = []
+        self.opp_history = []
+
+    def reset_session(self):
+        """Reset for new play session (keep persistent model)."""
+        self.session_buffer = []
+        self.session_model = None
+        self.reset_game()
+
+    def get_action(self, my_bullets: int, opp_bullets: int) -> str:
+        """Get AI's action for this round."""
+        ctx = GameContext(
+            my_bullets=my_bullets,
+            opp_bullets=opp_bullets,
+            opp_history=self.opp_history,
+            my_history=self.my_history,
+        )
+        features = to_features(ctx)
+
+        # Get predictions from persistent model
+        persistent_probs = self.persistent_model.predict(features)
+
+        # Blend with session model if available
+        if self.session_model is not None and len(self.session_buffer) >= 10:
+            x = torch.tensor(features, dtype=torch.float32).unsqueeze(0)
+            session_probs = self.session_model.predict_probs(x)[0]
+
+            # Weight session more as it grows (max 60%)
+            session_weight = min(0.6, len(self.session_buffer) / 50)
+            probs = (1 - session_weight) * persistent_probs + session_weight * session_probs
+        else:
+            probs = persistent_probs
+
+        return select_action(probs, my_bullets, opp_bullets)
+
+    def update(self, my_action: str, opp_action: str):
+        """Update after round completes."""
+        # Validate actions
+        if my_action not in ACTIONS:
+            raise ValueError(f"Invalid my_action: {my_action}. Must be one of {ACTIONS}")
+        if opp_action not in ACTIONS:
+            raise ValueError(f"Invalid opp_action: {opp_action}. Must be one of {ACTIONS}")
+
+        # Build features from state BEFORE this round
+        ctx = GameContext(
+            my_bullets=0,  # Not used for history encoding
+            opp_bullets=0,
+            opp_history=self.opp_history,
+            my_history=self.my_history,
+        )
+        features = to_features(ctx)
+
+        # Update histories
+        self.my_history.append(my_action)
+        self.opp_history.append(opp_action)
+        self.rounds_played += 1
+
+        # Update persistent model
+        self.persistent_model.update(features, opp_action)
+
+        # Update session buffer
+        action_idx = ACTIONS.index(opp_action)
+        self.session_buffer.append((features.copy(), action_idx))
+
+        # Create/update session model after enough data
+        if len(self.session_buffer) >= 10:
+            self._update_session_model()
+
+    def _update_session_model(self):
+        """Train session-specific model on current session data."""
+        if self.session_model is None:
+            self.session_model = OpponentPredictor()
+
+        X = torch.tensor(np.array([b[0] for b in self.session_buffer]), dtype=torch.float32)
+        y = torch.tensor([b[1] for b in self.session_buffer], dtype=torch.long)
+
+        optimizer = torch.optim.Adam(self.session_model.parameters(), lr=0.05)
+        self.session_model.train()
+        for _ in range(10):
+            optimizer.zero_grad()
+            loss = F.cross_entropy(self.session_model(X), y)
+            loss.backward()
+            optimizer.step()
+        self.session_model.eval()
+
+    def save(self):
+        """Save persistent model to disk."""
+        self.persistent_model.save()
