@@ -201,8 +201,8 @@ def draw_button(frame, text, y, selected=False):
 
 
 def show_menu(cap, classifier):
-    """Show main menu. Returns 'start', 'calibrate', 'settings', or None for quit."""
-    selected = 0  # 0 = Start, 1 = Calibrate, 2 = Settings
+    """Show main menu. Returns 'start', 'settings', or None for quit."""
+    selected = 0  # 0 = Start, 1 = Settings, 2 = Quit
     num_options = 3
 
     while True:
@@ -231,12 +231,12 @@ def show_menu(cap, classifier):
 
         # Buttons
         draw_button(frame, "START", h//2 - 80, selected == 0)
-        draw_button(frame, "CALIBRATE", h//2 + 20, selected == 1)
-        draw_button(frame, "SETTINGS", h//2 + 120, selected == 2)
+        draw_button(frame, "SETTINGS", h//2 + 20, selected == 1)
+        draw_button(frame, "QUIT", h//2 + 120, selected == 2)
 
         # Instructions
-        cv2.putText(frame, "UP/DOWN to select, ENTER to confirm, Q to quit",
-                   (w//2 - 280, h - 30),
+        cv2.putText(frame, "UP/DOWN to select, ENTER to confirm",
+                   (w//2 - 220, h - 30),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 1)
 
         cv2.imshow("007 Pose Game", frame)
@@ -252,9 +252,9 @@ def show_menu(cap, classifier):
             if selected == 0:
                 return 'start'
             elif selected == 1:
-                return 'calibrate'
-            else:
                 return 'settings'
+            else:
+                return None  # Quit
 
 
 def run_calibration(cap, landmarker, classifier):
@@ -346,10 +346,11 @@ def run_calibration(cap, landmarker, classifier):
         return False
 
 
-def show_settings(cap, settings):
+def show_settings(cap, settings, ai, landmarker, classifier):
     """Show settings menu. Modifies settings dict in place."""
-    selected = 0  # 0 = Show Bullets toggle, 1 = Back
-    num_options = 2
+    selected = 0  # 0 = Show Bullets, 1 = Calibrate, 2 = Reset AI, 3 = Back
+    num_options = 4
+    confirm_reset = False  # Two-step confirmation for reset
 
     while True:
         ret, frame = cap.read()
@@ -361,16 +362,23 @@ def show_settings(cap, settings):
         frame = (frame * 0.3).astype('uint8')
 
         # Title
-        draw_centered_text(frame, "SETTINGS", y_offset=-150, font_scale=2, color=(0, 255, 255))
+        draw_centered_text(frame, "SETTINGS", y_offset=-180, font_scale=2, color=(0, 255, 255))
 
         h, w = frame.shape[:2]
 
         # Show Bullets toggle
         show_bullets_text = "Show Bullets: " + ("ON" if settings["show_bullets"] else "OFF")
-        draw_button(frame, show_bullets_text, h//2 - 40, selected == 0)
+        draw_button(frame, show_bullets_text, h//2 - 110, selected == 0)
+
+        # Calibrate button
+        draw_button(frame, "CALIBRATE", h//2 - 10, selected == 1)
+
+        # Reset AI button
+        reset_text = "CONFIRM RESET?" if confirm_reset else "Reset AI"
+        draw_button(frame, reset_text, h//2 + 90, selected == 2)
 
         # Back button
-        draw_button(frame, "BACK", h//2 + 60, selected == 1)
+        draw_button(frame, "BACK", h//2 + 190, selected == 3)
 
         # Instructions
         cv2.putText(frame, "UP/DOWN to select, ENTER to toggle/confirm",
@@ -384,13 +392,34 @@ def show_settings(cap, settings):
             return
         elif key in [ord('w'), ord('W'), 0]:  # W or Up arrow
             selected = (selected - 1) % num_options
+            confirm_reset = False  # Cancel confirmation on navigation
         elif key in [ord('s'), ord('S'), 1]:  # S or Down arrow
             selected = (selected + 1) % num_options
+            confirm_reset = False  # Cancel confirmation on navigation
         elif key in [13, 10]:  # Enter
             if selected == 0:
                 # Toggle show_bullets
                 settings["show_bullets"] = not settings["show_bullets"]
                 save_settings(settings)
+            elif selected == 1:
+                # Calibrate
+                run_calibration(cap, landmarker, classifier)
+            elif selected == 2:
+                # Reset AI (two-step confirmation)
+                if confirm_reset:
+                    ai.reset_all()
+                    confirm_reset = False
+                    # Show confirmation message briefly
+                    for _ in range(45):  # ~1.5 seconds
+                        ret, frame = cap.read()
+                        if ret:
+                            frame = cv2.flip(frame, 1)
+                            frame = (frame * 0.3).astype('uint8')
+                            draw_centered_text(frame, "AI Reset!", font_scale=1.5, color=(0, 255, 0))
+                            cv2.imshow("007 Pose Game", frame)
+                            cv2.waitKey(33)
+                else:
+                    confirm_reset = True
             else:
                 # Back
                 return
@@ -671,10 +700,8 @@ def main():
                     elif result == 0:
                         draws += 1
                     print(f"Score: You {wins} - {losses} AI (Draws: {draws})")
-            elif choice == 'calibrate':
-                run_calibration(cap, landmarker, classifier)
             elif choice == 'settings':
-                show_settings(cap, settings)
+                show_settings(cap, settings, ai, landmarker, classifier)
 
     ai.save()
     cap.release()

@@ -241,6 +241,19 @@ class RLOpponent:
         self.session_model = None
         self.reset_game()
 
+    def reset_all(self):
+        """Full reset - clear all learned data and delete saved model."""
+        # Delete saved model file
+        if self.model_path.exists():
+            self.model_path.unlink()
+
+        # Reinitialize persistent model (fresh weights, empty buffer)
+        self.persistent_model = OpponentModel(str(self.model_path))
+
+        # Clear session data
+        self.reset_session()
+        self.rounds_played = 0
+
     def get_action(self, my_bullets: int, opp_bullets: int) -> str:
         """Get AI's action for this round."""
         ctx = GameContext(
