@@ -7,6 +7,7 @@ import numpy as np
 import os
 import time
 
+from pose_classifier import PoseClassifier, POSE_LABELS
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -32,83 +33,6 @@ def get_landmark(landmarks, idx):
     """Extract x, y, z, visibility from landmark."""
     lm = landmarks[idx]
     return lm.x, lm.y, lm.z, lm.visibility
-
-
-def classify_pose(landmarks):
-    """Classify pose based on keypoint positions.
-
-    SHOOT: Wrists forward (z-depth ahead of shoulders), arms extended
-    SHIELD: X arms - wrists crossed in front of chest
-    RELOAD: Guns to sky - wrists above elbows, elbows bent and down
-    """
-    # Extract relevant landmarks
-    l_shoulder = get_landmark(landmarks, LEFT_SHOULDER)
-    r_shoulder = get_landmark(landmarks, RIGHT_SHOULDER)
-    l_elbow = get_landmark(landmarks, LEFT_ELBOW)
-    r_elbow = get_landmark(landmarks, RIGHT_ELBOW)
-    l_wrist = get_landmark(landmarks, LEFT_WRIST)
-    r_wrist = get_landmark(landmarks, RIGHT_WRIST)
-
-    # Check visibility - need decent confidence on key points
-    min_visibility = 0.5
-    if (l_wrist[3] < min_visibility or r_wrist[3] < min_visibility or
-        l_elbow[3] < min_visibility or r_elbow[3] < min_visibility):
-        return "NEUTRAL"
-
-    # Calculate body center x (for crossing detection)
-    body_center_x = (l_shoulder[0] + r_shoulder[0]) / 2
-
-    # Shoulder width for relative measurements
-    shoulder_width = abs(r_shoulder[0] - l_shoulder[0])
-
-    # === SHIELD: X arms - wrists crossed ===
-    # Left wrist should be on the right side, right wrist on the left side
-    left_wrist_crossed = l_wrist[0] > body_center_x
-    right_wrist_crossed = r_wrist[0] < body_center_x
-
-    # Wrists should be in front of chest (between shoulders vertically)
-    chest_top = min(l_shoulder[1], r_shoulder[1])
-    chest_bottom = (l_shoulder[1] + r_shoulder[1]) / 2 + shoulder_width
-    wrists_at_chest = (chest_top - 0.1 < l_wrist[1] < chest_bottom + 0.1 and
-                       chest_top - 0.1 < r_wrist[1] < chest_bottom + 0.1)
-
-    if left_wrist_crossed and right_wrist_crossed and wrists_at_chest:
-        return "SHIELD"
-
-    # === RELOAD: Guns to sky - wrists above elbows, elbows down ===
-    # Wrists should be above elbows (lower y value = higher on screen)
-    left_wrist_above_elbow = l_wrist[1] < l_elbow[1]
-    right_wrist_above_elbow = r_wrist[1] < r_elbow[1]
-
-    # Elbows should be relatively low (near or below shoulders)
-    left_elbow_down = l_elbow[1] > l_shoulder[1] - 0.05
-    right_elbow_down = r_elbow[1] > r_shoulder[1] - 0.05
-
-    # Wrists should be near shoulder height or above
-    wrists_up = l_wrist[1] < l_shoulder[1] + 0.1 and r_wrist[1] < r_shoulder[1] + 0.1
-
-    if (left_wrist_above_elbow and right_wrist_above_elbow and
-        left_elbow_down and right_elbow_down and wrists_up):
-        return "RELOAD"
-
-    # === SHOOT: Arms extended forward ===
-    # Wrists should be forward (more negative z = closer to camera)
-    # In MediaPipe, z is depth relative to hips, negative = closer to camera
-    z_threshold = -0.15  # Wrists should be notably in front
-    left_wrist_forward = l_wrist[2] < l_shoulder[2] + z_threshold
-    right_wrist_forward = r_wrist[2] < r_shoulder[2] + z_threshold
-
-    # Arms should be somewhat extended (wrists away from shoulders horizontally)
-    # and at roughly shoulder height
-    wrists_extended = (abs(l_wrist[0] - l_shoulder[0]) > shoulder_width * 0.3 or
-                       abs(r_wrist[0] - r_shoulder[0]) > shoulder_width * 0.3)
-    wrists_at_shoulder_height = (abs(l_wrist[1] - l_shoulder[1]) < 0.2 and
-                                  abs(r_wrist[1] - r_shoulder[1]) < 0.2)
-
-    if left_wrist_forward and right_wrist_forward and wrists_at_shoulder_height:
-        return "SHOOT"
-
-    return "NEUTRAL"
 
 
 def draw_landmarks(image, landmarks):
@@ -229,6 +153,11 @@ def main():
                 landmarks = results.pose_landmarks[0]
                 draw_landmarks(frame, landmarks)
                 current_pose = classify_pose(landmarks)
+                if current_pose != "NEUTRAL":
+                    print({
+                        "current_pose": current_pose,
+                        "landmarks": landmarks,
+                    })
             else:
                 current_pose = "NO PLAYER"
 
