@@ -127,6 +127,48 @@ def draw_pose_text(image, pose, color):
     cv2.putText(image, text, (x, y), font, font_scale, color, thickness)
 
 
+def draw_calibration_overlay(image, calibration, classifier):
+    """Draw calibration mode UI overlay."""
+    h, w = image.shape[:2]
+
+    # Semi-transparent overlay
+    overlay = image.copy()
+    cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.5, image, 0.5, 0, image)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # Title
+    cv2.putText(image, "CALIBRATION MODE", (w // 2 - 200, 60),
+                font, 1.5, (0, 255, 255), 3)
+
+    pose = calibration.get_current_pose()
+
+    if calibration.recording:
+        # Show recording countdown
+        elapsed = calibration.get_recording_elapsed()
+        remaining = max(0, calibration.record_duration - elapsed)
+
+        cv2.putText(image, f"Recording {pose}...", (w // 2 - 150, h // 2 - 50),
+                    font, 1.2, (0, 255, 0), 2)
+        cv2.putText(image, f"{remaining:.1f}s", (w // 2 - 50, h // 2 + 50),
+                    font, 2.0, (0, 255, 0), 3)
+
+        samples = classifier.get_sample_count(pose)
+        cv2.putText(image, f"Samples: {samples}", (w // 2 - 80, h // 2 + 120),
+                    font, 0.8, (255, 255, 255), 2)
+    else:
+        # Show prompt
+        cv2.putText(image, f"Hold {pose} pose", (w // 2 - 150, h // 2 - 50),
+                    font, 1.2, (255, 255, 255), 2)
+        cv2.putText(image, "Press SPACE to start recording", (w // 2 - 220, h // 2 + 50),
+                    font, 0.9, (200, 200, 200), 2)
+
+    # Instructions
+    cv2.putText(image, "[ESC] Cancel", (10, h - 20),
+                font, 0.6, (150, 150, 150), 1)
+
+
 def main():
     # Get model path
     script_dir = os.path.dirname(os.path.abspath(__file__))
