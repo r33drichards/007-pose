@@ -102,3 +102,13 @@ button:hover {
   color: #888;
   margin-top: 0.5rem;
 }
+
+.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
