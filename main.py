@@ -245,21 +245,40 @@ def main():
             results = landmarker.detect_for_video(mp_image, frame_timestamp_ms)
 
             current_pose = "NEUTRAL"
+            landmarks = None
 
             if results.pose_landmarks and len(results.pose_landmarks) > 0:
                 landmarks = results.pose_landmarks[0]
                 draw_landmarks(frame, landmarks)
-                current_pose = classify_pose(landmarks)
-                if current_pose != "NEUTRAL":
-                    print({
-                        "current_pose": current_pose,
-                        "landmarks": landmarks,
-                    })
-            else:
-                current_pose = "NO PLAYER"
 
-            color = colors.get(current_pose, (128, 128, 128))
-            draw_pose_text(frame, current_pose, color)
+            if calibration.active:
+                # Calibration mode
+                if calibration.recording and landmarks:
+                    classifier.add_sample(landmarks, calibration.get_current_pose())
+
+                    if calibration.is_recording_done():
+                        if calibration.next_pose():
+                            # More poses to record
+                            pass
+                        else:
+                            # All poses recorded, train model
+                            print("Training model...")
+                            if classifier.train():
+                                print("Calibration complete!")
+                            else:
+                                print("Training failed - not enough samples")
+                            calibration.cancel()
+
+                draw_calibration_overlay(frame, calibration, classifier)
+            else:
+                # Normal detection mode
+                if landmarks:
+                    current_pose = classifier.predict(landmarks)
+                else:
+                    current_pose = "NO PLAYER"
+
+                color = colors.get(current_pose, (128, 128, 128))
+                draw_pose_text(frame, current_pose, color)
 
             cv2.putText(frame, "[Q] Quit", (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
