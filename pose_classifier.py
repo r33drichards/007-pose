@@ -135,3 +135,32 @@ class PoseClassifier:
 
         label_idx = POSE_LABELS.index(pose_label)
         return sum(1 for _, idx in self.training_samples if idx == label_idx)
+
+    def train(self, epochs: int = 200, lr: float = 0.001) -> bool:
+        """Train the model on collected samples. Returns True if successful."""
+        if len(self.training_samples) < 10:
+            return False
+
+        # Prepare data
+        X = np.array([s[0] for s in self.training_samples])
+        y = np.array([s[1] for s in self.training_samples])
+
+        X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
+        y_tensor = torch.tensor(y, dtype=torch.long).to(self.device)
+
+        # Create and train model
+        self.model = PoseMLP().to(self.device)
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+
+        self.model.train()
+        for epoch in range(epochs):
+            optimizer.zero_grad()
+            outputs = self.model(X_tensor)
+            loss = criterion(outputs, y_tensor)
+            loss.backward()
+            optimizer.step()
+
+        self.model.eval()
+        self.save_model()
+        return True
