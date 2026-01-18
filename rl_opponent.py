@@ -158,3 +158,53 @@ class OpponentModel:
                 self.buffer = data.get('buffer', [])
             except Exception as e:
                 print(f"Could not load opponent model: {e}")
+
+
+# Payoff matrix: PAYOFF[ai_action][opp_action] = AI's reward
+PAYOFF = {
+    'L': {'L': 0.0,  'B': 0.0,  'S': -1.0},   # AI loads: dies if opp shoots
+    'B': {'L': 0.0,  'B': 0.0,  'S': 0.1},    # AI blocks: safe, slight bonus if blocked shot
+    'S': {'L': 1.0,  'B': -0.1, 'S': 0.0},    # AI shoots: kills loader, wastes on blocker
+}
+
+
+def get_valid_actions(bullets: int) -> list[str]:
+    """Return valid actions given bullet count."""
+    if bullets > 0:
+        return ['L', 'B', 'S']
+    return ['L', 'B']
+
+
+def select_action(
+    opp_probs: np.ndarray,
+    ai_bullets: int,
+    opp_bullets: int,
+    exploration_rate: float = 0.1
+) -> str:
+    """Select best action given predicted opponent distribution."""
+    p_L, p_B, p_S = opp_probs
+
+    # Adjust if opponent can't shoot (0 bullets)
+    if opp_bullets <= 0:
+        # Redistribute S probability to L and B
+        p_L = p_L + p_S * 0.7  # Most likely reload
+        p_B = p_B + p_S * 0.3  # Maybe block
+        p_S = 0.0
+
+    # Calculate expected value for each AI action
+    expected_values = {}
+    for ai_action in ACTIONS:
+        ev = (p_L * PAYOFF[ai_action]['L'] +
+              p_B * PAYOFF[ai_action]['B'] +
+              p_S * PAYOFF[ai_action]['S'])
+        expected_values[ai_action] = ev
+
+    # Filter to valid actions
+    valid_actions = get_valid_actions(ai_bullets)
+
+    # Add exploration
+    if random.random() < exploration_rate:
+        return random.choice(valid_actions)
+
+    # Pick best valid action
+    return max(valid_actions, key=lambda a: expected_values[a])

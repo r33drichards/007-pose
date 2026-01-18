@@ -112,3 +112,54 @@ def test_opponent_model_save_load():
         probs1 = model1.predict(features)
         probs2 = model2.predict(features)
         assert np.allclose(probs1, probs2, atol=0.1)
+
+
+# Action Selection tests
+from rl_opponent import select_action, PAYOFF, get_valid_actions
+
+def test_payoff_matrix_structure():
+    # Verify payoff matrix has correct structure
+    for ai_action in ['L', 'B', 'S']:
+        assert ai_action in PAYOFF
+        for opp_action in ['L', 'B', 'S']:
+            assert opp_action in PAYOFF[ai_action]
+
+def test_get_valid_actions_with_bullets():
+    actions = get_valid_actions(1)
+    assert set(actions) == {'L', 'B', 'S'}
+
+def test_get_valid_actions_no_bullets():
+    actions = get_valid_actions(0)
+    assert set(actions) == {'L', 'B'}
+
+def test_select_action_shoots_loader():
+    # If opponent will definitely load, AI should shoot (if has bullets)
+    probs = np.array([1.0, 0.0, 0.0])  # 100% Load
+    action = select_action(probs, ai_bullets=1, opp_bullets=0, exploration_rate=0.0)
+    assert action == 'S'
+
+def test_select_action_blocks_shooter():
+    # If opponent will definitely shoot, AI should block
+    probs = np.array([0.0, 0.0, 1.0])  # 100% Shoot
+    action = select_action(probs, ai_bullets=1, opp_bullets=1, exploration_rate=0.0)
+    assert action == 'B'
+
+def test_select_action_loads_against_blocker():
+    # If opponent will definitely block, AI should load
+    probs = np.array([0.0, 1.0, 0.0])  # 100% Block
+    action = select_action(probs, ai_bullets=1, opp_bullets=1, exploration_rate=0.0)
+    assert action == 'L'
+
+def test_select_action_no_bullets_cant_shoot():
+    # AI with no bullets can't shoot even if optimal
+    probs = np.array([1.0, 0.0, 0.0])  # 100% Load (shoot would be optimal)
+    action = select_action(probs, ai_bullets=0, opp_bullets=0)
+    assert action in ['L', 'B']  # Must load or block
+
+def test_select_action_adjusts_for_opp_no_bullets():
+    # If opponent has no bullets, their shoot probability should be ignored
+    probs = np.array([0.0, 0.0, 1.0])  # Predicts 100% Shoot
+    # But opponent has 0 bullets, so can't shoot - AI should not block
+    action = select_action(probs, ai_bullets=1, opp_bullets=0)
+    # With adjusted probs, opponent will L or B, so AI should S or L
+    assert action in ['S', 'L']
